@@ -1,0 +1,42 @@
+Talos kernel patch for Radxa TACO boards (talos-builds, kernels/rpi_cm-radxa_taco/patches).
+
+Raspberry Pi's MSI-X support for the BCM2711/BCM2712 PCIe controller's internal MSI
+target, as carried in raspberrypi/linux since 2025-04-02 (commit 831b46008fa4, in
+rpi-6.18.y). Mainline's pcie-brcmstb offers only MSI and multi-MSI, so every device falls
+back from MSI-X to MSI. The NVMe on the CM4 TACO (SK hynix Gold P31) does not work on MSI:
+its admin commands complete but no interrupt arrives ("QID 0 timeout, completion polled")
+and the boot stalls; with MSI-X under Raspberry Pi OS it works. Evidence:
+kernels/rpi_cm-radxa_taco/README.md (Raspberry Pi OS 6.18.50+rpt on the same board, directly and through
+Talos's U-Boot). With this, `pci=nomsi` can go from the CM4's kernel arguments.
+
+Applied by siderolabs/pkgs' kernel-build step (kernel/build/pkg.yaml applies every
+kernel/build/patches/*.patch with patch -p1). Drop it once Talos's kernel carries a fix.
+
+From: Jonathan Bell <jonathan@raspberrypi.com>
+Date: Wed, 2 Apr 2025 15:25:22 +0100
+Subject: [PATCH] PCI: pcie-brcmstb: fake MSIx support on internal MSI target
+
+Apparently some NVMe SSD implementations don't fall back to MSI cleanly,
+instead making the driver allocate one queue via the legacy interrupt.
+
+There are still only 32 vectors available, but should be sufficient for
+the majority of use-cases on BCM2711.
+
+Signed-off-by: Jonathan Bell <jonathan@raspberrypi.com>
+---
+ drivers/pci/controller/pcie-brcmstb.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/pci/controller/pcie-brcmstb.c b/drivers/pci/controller/pcie-brcmstb.c
+--- a/drivers/pci/controller/pcie-brcmstb.c
++++ b/drivers/pci/controller/pcie-brcmstb.c
+@@ -473,7 +473,8 @@ static void brcm_pcie_set_outbound_win(struct brcm_pcie *pcie,
+ 				 MSI_FLAG_NO_AFFINITY)
+
+ #define BRCM_MSI_FLAGS_SUPPORTED (MSI_GENERIC_FLAGS_MASK	| \
+-				  MSI_FLAG_MULTI_PCI_MSI)
++				  MSI_FLAG_MULTI_PCI_MSI	| \
++				  MSI_FLAG_PCI_MSIX)
+
+ static const struct msi_parent_ops brcm_msi_parent_ops = {
+ 	.required_flags		= BRCM_MSI_FLAGS_REQUIRED,

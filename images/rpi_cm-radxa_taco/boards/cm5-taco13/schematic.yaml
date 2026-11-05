@@ -1,0 +1,20 @@
+# Board cm5-taco13: a Compute Module 5 on a Radxa TACO v1.3 (boards.md).
+#
+# REFERENCE AND FALLBACK ONLY. This is the Image Factory schematic a stock Talos image for
+# this board would use: the Pi 5 overlay (the CM5 is BCM2712, Pi 5 class) and the
+# RTL8125B's firmware. Stock Talos cannot use the board's SATA controller (error -12;
+# kernels/rpi_cm-radxa_taco/README.md), so nodes install installer-cm5-taco13 from build.sh, which
+# matches this schematic in overlay and firmware. A node goes back to this schematic's
+# installer once Talos carries the fixes (building.md, "Going back").
+#
+# Not the pcie-32bit-dma-pi5 overlay: it makes the SATA controller work but breaks an NVMe
+# behind the same PCIe switch.
+#
+# Add your own extensions when you make your image, not here.
+overlay:
+  image: siderolabs/sbc-raspberrypi
+  name: rpi_5
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/realtek-firmware

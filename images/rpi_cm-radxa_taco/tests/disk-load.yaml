@@ -1,0 +1,53 @@
+# Sustained disk load on a TACO storage node under Talos: the
+# HDDs written and verified (fio, crc32c), the NVMe read at the same time, all over the
+# one PCIe link. Talos has no shell, so fio runs in a privileged pod on that node.
+#
+# DESTROYS THE DATA ON sda, sdb AND sdc. The NVMe is only read (its Raspberry Pi OS stays).
+# Check `talosctl get disks` first: sda, sdb, sdc must be the HDDs (ST4000LM024).
+#
+#   kubectl apply -f tests/disk-load.yaml
+#   kubectl -n disk-test logs -f fio          # about 45 minutes; every job must end err= 0
+#   talosctl dmesg | grep -i -E 'nvme|ata[0-9]|ahci|timeout|reset|error'
+#   kubectl delete -f tests/disk-load.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: disk-test
+  labels:
+    # Talos enforces the "baseline" pod security level; this pod needs raw devices.
+    pod-security.kubernetes.io/enforce: privileged
+    # The same for Talos's default "restricted" warn and audit levels, so no warning prints.
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fio
+  namespace: disk-test
+spec:
+  restartPolicy: Never
+  # The test node is a control plane, which takes no ordinary pods.
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: fio
+      image: docker.io/library/alpine:3.22
+      securityContext:
+        # Privileged containers see the host's block devices.
+        privileged: true
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -e
+          apk add --no-cache fio
+          # Global options first; each --name starts a job with its own options.
+          # HDDs: write 100 GiB with a checksum per block, then read back and check (stops
+          # at the first bad block). NVMe: reads only, 4 x 100 GiB, to load the shared link.
+          fio --direct=1 --ioengine=libaio --iodepth=16 --bs=1M --group_reporting=0 \
+            --name=sda --filename=/dev/sda --rw=write --size=100G --verify=crc32c --verify_fatal=1 \
+            --name=sdb --filename=/dev/sdb --rw=write --size=100G --verify=crc32c --verify_fatal=1 \
+            --name=sdc --filename=/dev/sdc --rw=write --size=100G --verify=crc32c --verify_fatal=1 \
+            --name=nvme --filename=/dev/nvme0n1 --rw=read --size=100G --loops=4

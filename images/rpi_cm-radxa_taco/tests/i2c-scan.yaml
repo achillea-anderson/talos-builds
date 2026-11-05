@@ -1,0 +1,51 @@
+# Lists a Talos node's I2C buses and scans each for devices (looking
+# for the Radxa TACO's real-time clock chip). Read-only. Talos has no shell, so i2c-tools
+# run in a privileged pod on that node.
+#
+#   kubectl apply -f tests/i2c-scan.yaml
+#   kubectl -n i2c-scan logs -f i2c            # a table per bus; "UU" = in use by a driver
+#   kubectl delete -f tests/i2c-scan.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: i2c-scan
+  labels:
+    # Raw device access needs the privileged level (warn/audit too, so nothing prints).
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: i2c
+  namespace: i2c-scan
+spec:
+  restartPolicy: Never
+  # The test node is a control plane, which takes no ordinary pods.
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: i2c
+      image: docker.io/library/alpine:3.22
+      securityContext:
+        # Privileged containers see the host's /dev/i2c-* devices.
+        privileged: true
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -e
+          apk add --no-cache i2c-tools
+          i2cdetect -l
+          for dev in /dev/i2c-*; do
+            # No bus at all: the glob stays literal. Seen on the CM5 TACO under Talos
+            #, whose device tree enables no I2C controller.
+            [ -e "$dev" ] || { echo "no I2C buses on this node"; break; }
+            bus=${dev#/dev/i2c-}
+            echo "== bus $bus"
+            # -y: no prompt. Probing only reads; -r (read-byte) avoids the quick-write
+            # probe some chips dislike.
+            i2cdetect -y -r "$bus" || true
+          done

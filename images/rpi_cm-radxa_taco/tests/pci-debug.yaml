@@ -1,0 +1,59 @@
+# Shows a Talos node's PCIe layout: the tree, each device's and bridge's memory windows,
+# MSI/MSI-X capabilities, the host bridge's address ranges from the device tree, and
+# /proc/iomem. Read-only. Talos has no shell, so it runs in a privileged pod on that node.
+#
+# For PCIe problems such as interrupts that never arrive: it shows where everything sits
+# (the brcmstb controller catches MSIs written to PCIe address 0xfffffffc, and the
+# outbound memory window is 0xc0000000-0xffffffff). Compare with pci-debug-rpios.sh on the
+# same board.
+#
+#   kubectl apply -f tests/pci-debug.yaml
+#   kubectl -n pci-debug logs -f pci > pci-debug.txt
+#   kubectl delete -f tests/pci-debug.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pci-debug
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pci
+  namespace: pci-debug
+spec:
+  restartPolicy: Never
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: pci
+      image: docker.io/library/alpine:3.22
+      securityContext:
+        # Full config space (lspci -vvv) and real addresses in /proc/iomem need root with
+        # all capabilities.
+        privileged: true
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          apk add --no-cache pciutils >/dev/null
+          echo "===== kernel"; uname -a
+          echo "===== cmdline"; cat /proc/cmdline
+          echo "===== tree"; lspci -tv
+          echo "===== devices"; lspci -vvv -nn
+          echo "===== iomem"; cat /proc/iomem
+          echo "===== host bridge device tree (ranges, dma-ranges, msi)"
+          for n in /proc/device-tree/scb/pcie@*; do
+            [ -d "$n" ] || continue
+            echo "$n"; ls "$n"
+            for p in ranges dma-ranges msi-parent msi-controller interrupt-names compatible; do
+              [ -e "$n/$p" ] && { echo "-- $p"; hexdump -C "$n/$p"; }
+            done
+          done
+          echo "===== dmesg (pci, brcm, msi)"
+          dmesg 2>/dev/null | grep -i -E 'pci|brcm|msi' | head -150
+          echo "===== interrupts"; cat /proc/interrupts

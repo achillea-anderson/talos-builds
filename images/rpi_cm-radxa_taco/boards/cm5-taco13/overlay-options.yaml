@@ -1,0 +1,11 @@
+# Overlay options for board cm5-taco13 (a CM5 on a TACO v1.3): build.sh builds
+# installer-cm5-taco13 with the rpi_5 overlay and passes this file to the imager with
+# --overlay-option @... (the same keys as a schematic's overlay options). configTxtAppend
+# is added to the end of the boot partition's config.txt.
+configTxtAppend: |
+  # The TACO's real-time clock: PCF8563-compatible at 0x51 on GPIO 2 (SDA) and 3 (SCL), with
+  # pull-ups on the board. Driven as software I2C over plain GPIO: under Talos the RP1's
+  # hardware I2C controller on these pins gets no acknowledgement (kernels/rpi_cm-radxa_taco/README.md).
+  # Needs CONFIG_RTC_DRV_PCF8563 and CONFIG_I2C_GPIO (config-arm64.fragment). Talos then sets
+  # the system clock from it at boot (RTC_HCTOSYS), instead of starting at 1970.
+  dtoverlay=i2c-rtc-gpio,pcf8563,i2c_gpio_sda=2,i2c_gpio_scl=3

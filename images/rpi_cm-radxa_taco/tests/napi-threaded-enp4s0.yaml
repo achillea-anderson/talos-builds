@@ -1,0 +1,24 @@
+# Threaded NAPI for the TACO's 2.5 GbE NIC, a test for the CM4's receive limit. On Talos
+# it did not help (kernels/rpi_cm-radxa_taco/README.md, "Node settings"); kept for others to try.
+#
+# Why: on the CM4 every MSI and MSI-X vector lands on CPU0 (the brcmstb MSI controller
+# has one parent interrupt), and the RTL8125's ring service (NAPI poll: taking frames off
+# the receive ring, refilling it, freeing sent buffers) runs as softirq on the CPU that
+# took the interrupt, so on CPU0 too. RPS (rps-enp4s0.yaml) moves only the protocol work
+# after that. With threaded NAPI the poll runs in a kernel thread (napi/enp4s0-<n>)
+# instead, which the scheduler can put on CPU1 to 3; CPU0 keeps only the short hard
+# interrupt. Use together with rps-enp4s0.yaml or alone.
+#
+# SysfsConfig (Talos 1.14): keys are the path under /sys with dots for slashes. It
+# applies live, no reboot:
+#
+#   talosctl -n <node> -e <node> patch machineconfig --patch @tests/napi-threaded-enp4s0.yaml
+#   talosctl -n <node> -e <node> read /sys/class/net/enp4s0/threaded   # 1
+#
+# SysfsConfig has no name, so with rps-enp4s0.yaml applied this patch most likely merges
+# into the same document: check that rx-0/rps_cpus still reads e afterwards. Removing it
+# with `$patch: delete` would then remove RPS too; to drop only this, patch the value "0".
+apiVersion: v1alpha1
+kind: SysfsConfig
+params:
+  class.net.enp4s0.threaded: "1"

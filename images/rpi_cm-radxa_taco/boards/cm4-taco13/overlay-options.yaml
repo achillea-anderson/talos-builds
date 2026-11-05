@@ -1,0 +1,14 @@
+# Overlay options for board cm4-taco13 (a CM4 on a TACO v1.3): build.sh builds
+# installer-cm4-taco13 with the rpi_generic overlay and passes this file to the imager with
+# --overlay-option @... (the same keys as a schematic's overlay options). configTxtAppend
+# is added to the end of the boot partition's config.txt.
+configTxtAppend: |
+  # The TACO's real-time clock: PCF8563-compatible at 0x51 on GPIO 2 (SDA) and 3 (SCL), with
+  # pull-ups on the board. Driven as software I2C over plain GPIO, as on cm5-taco13: the CM4
+  # has no RP1 (its I2C is the BCM2711's own, which could be tried later), but the same
+  # recipe works on both boards without depending on either chip's I2C controller.
+  # Needs CONFIG_RTC_DRV_PCF8563 and CONFIG_I2C_GPIO (config-arm64.fragment). Talos then sets
+  # the system clock from it at boot (RTC_HCTOSYS), instead of starting at 1970.
+  # No dtoverlay=pcie-32bit-dma: our kernel lets the JMB585 use 64-bit DMA, which the CM4's
+  # PCIe needs (RAM sits above 4 GB on its bus, kernels/rpi_cm-radxa_taco/README.md), as on the CM5.
+  dtoverlay=i2c-rtc-gpio,pcf8563,i2c_gpio_sda=2,i2c_gpio_scl=3

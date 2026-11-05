@@ -1,0 +1,5 @@
+# Extra kernel arguments for board cm4-taco13's installer, one per line (build.sh passes each
+# to the imager as --extra-kernel-arg). Comments and blank lines are ignored.
+
+# None: patches/0002-pci-brcmstb-msi-x.patch gives the NVMe its MSI-X interrupts, so the
+# board needs no `pci=nomsi` (kernels/rpi_cm-radxa_taco/README.md).

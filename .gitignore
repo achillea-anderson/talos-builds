@@ -1,0 +1,8 @@
+result
+result-*
+.direnv/
+local/
+
+# Instructions for Claude Code: ours, not published.
+CLAUDE.md
+.claude/

@@ -1,0 +1,66 @@
+# Shows how the kernel has set up GPIO pins on a Talos node, from debugfs
+# (under Talos the CM5's i2c_arm bus answers nothing; is GPIO 2/3 switched to
+# I2C?). Read-only. Talos has no shell, so it runs in a privileged pod on that node.
+#
+#   kubectl apply -f tests/pinctrl-debug.yaml
+#   kubectl -n pinctrl-debug logs -f pinctrl
+#   kubectl delete -f tests/pinctrl-debug.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pinctrl-debug
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pinctrl
+  namespace: pinctrl-debug
+spec:
+  restartPolicy: Never
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: pinctrl
+      image: docker.io/library/alpine:3.22
+      securityContext:
+        # Mounting debugfs needs a privileged container.
+        privileged: true
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null || true
+          cd /sys/kernel/debug/pinctrl || { echo "no pinctrl in debugfs"; exit 1; }
+          ls
+          for d in */; do
+            case "$d" in *rp1*|*gpio*) ;; *) continue ;; esac
+            echo "===== $d"
+            # Which function owns each pin (pins 0-7 are enough for GPIO 2/3).
+            grep -E '^pin [0-7] ' "$d/pinmux-pins" 2>/dev/null
+            grep -E '^pin [0-7] ' "$d/pinconf-pins" 2>/dev/null
+            # The groups and functions this controller offers for i2c1.
+            grep -i -E 'i2c1' "$d/pinmux-functions" 2>/dev/null
+          done
+          echo "===== pinctrl-handles (i2c)"
+          grep -i -B1 -A6 'i2c' pinctrl-handles 2>/dev/null | head -60
+          echo "===== gpio 0-7"
+          grep -E 'gpio-(0|1|2|3|4|5|6|7) ' /sys/kernel/debug/gpio 2>/dev/null
+          # The I2C controller's input clock: it sets the bus timing from this rate. Compare
+          # with Raspberry Pi OS: sudo grep -i -E 'i2c|clk_sys|pll_sys|rp1' \
+          #   /sys/kernel/debug/clk/clk_summary
+          echo "===== clocks (header, then i2c / sys / rp1)"
+          head -3 /sys/kernel/debug/clk/clk_summary 2>/dev/null
+          grep -i -E 'i2c|clk_sys|pll_sys|rp1' /sys/kernel/debug/clk/clk_summary 2>/dev/null
+          echo "===== i2c controller device tree (clock-frequency, clocks)"
+          for n in /sys/firmware/devicetree/base/axi/pcie@*/rp1*/i2c@74000 \
+                   /proc/device-tree/axi/pcie@*/rp1*/i2c@74000; do
+            [ -d "$n" ] || continue
+            echo "$n"; ls "$n"
+            # A big-endian 32-bit number: 00 01 86 a0 = 100000 (100 kHz).
+            [ -f "$n/clock-frequency" ] && hexdump -C "$n/clock-frequency"
+          done

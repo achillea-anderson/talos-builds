@@ -1,0 +1,72 @@
+# Network load on a TACO storage node, to run at the same time as disk-load.yaml: the NVMe
+# and the 2.5 GbE NIC (enp4s0) share the one PCIe lane, and on the CM4 every interrupt is
+# handled on CPU0, so a node that moves data over the network and onto its disks at once
+# (a Ceph OSD) is limited by both together. This loads both.
+#
+# An iperf3 server on the node's host network; the client runs on a 2.5 GbE machine on
+# the same switch (the peer). The client targets enp4s0's IPv6 LINK-LOCAL address: a
+# link-local address belongs to one interface, so the traffic cannot take end0 (the
+# onboard 1 GbE) instead, which an address on end0's subnet could (two routes to the
+# same peer). No address configuration is needed.
+#
+# Needs enp4s0 cabled and up: `talosctl get links` shows it up, and
+# `talosctl get addresses` lists its fe80:: address.
+#
+# The client must be on the node's VLAN: a link-local address does not cross a
+# router. A client whose switch port carries that VLAN tagged can join it for the test
+# (gone at reboot; found when the peer on the main LAN could not reach it):
+#   sudo ip link add link enp7s0 name enp7s0.10 type vlan id <VLAN>   # its wired NIC
+#   sudo ip link set enp7s0.10 up
+#   ...  afterwards: sudo ip link delete enp7s0.10
+# IFACE below is then that VLAN interface (enp7s0.10); it is not literal text.
+#
+#   kubectl apply -f tests/disk-load.yaml        # first: the disk load
+#   kubectl apply -f tests/net-load.yaml
+#   # on the peer (its 2.5 GbE interface name in place of IFACE; `ip -br link`):
+#   nix shell nixpkgs#iperf3 -c iperf3 -c 'fe80::<enp4s0 address>%IFACE' -t 2400 -P 4 --bidir
+#   # during the run, twice, a minute apart (interrupt rates per line and CPU):
+#   date +%T; talosctl read /proc/interrupts | grep -E '^ *(16|17|25|26):|IPI1'
+#   date +%T; talosctl read /proc/stat | grep -E '^cpu[0-3]? '     # CPU0's softirq share
+#   # afterwards, the same dmesg check as disk-load.yaml, then:
+#   kubectl delete -f tests/net-load.yaml
+#   kubectl delete -f tests/disk-load.yaml
+#
+# --bidir sends both ways at once (a storage node both receives and serves data);
+# -P 4 uses four streams; -t 2400 lasts 40 minutes, about as long as the disk load.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: net-test
+  labels:
+    # Host networking is not allowed at Talos's default "baseline" level.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: iperf3
+  namespace: net-test
+spec:
+  restartPolicy: Never
+  # On the node's own interfaces (enp4s0 among them), not the pod network.
+  hostNetwork: true
+  # The test node is a control plane, which takes no ordinary pods.
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: iperf3
+      image: docker.io/library/alpine:3.22
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -e
+          apk add --no-cache iperf3
+          # Listens on every address of the node, IPv4 and IPv6 (link-local included),
+          # port 5201. Serves one test, then keeps listening for the next.
+          # --forceflush: write each line at once (the log is not a terminal, so iperf3
+          # would otherwise buffer it, and "Server listening" shows late).
+          exec iperf3 --server --forceflush

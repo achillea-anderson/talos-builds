@@ -1,0 +1,17 @@
+# Board cm4-taco13: a Compute Module 4 on a Radxa TACO v1.3 (boards.md).
+#
+# REFERENCE AND FALLBACK ONLY. This is the Image Factory schematic a stock Talos image for
+# this board would use: the generic Pi overlay and the RTL8125B's firmware. Stock Talos
+# does not run the board fully (no NVMe interrupts without MSI-X; kernels/rpi_cm-radxa_taco/README.md), so
+# nodes install installer-cm4-taco13 from build.sh, which matches this schematic in
+# overlay and firmware. A node goes back to this schematic's installer once Talos carries
+# the fixes (building.md, "Going back").
+#
+# Add your own extensions when you make your image, not here.
+overlay:
+  image: siderolabs/sbc-raspberrypi
+  name: rpi_generic
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/realtek-firmware
