@@ -91,6 +91,23 @@ have not yet compared two independent builds of our images. Until we have, and s
 here with the matching digests, treat a mismatch as unexplained rather than as tampering,
 and prefer your own build.
 
+### Our images' digests
+
+Build **b1 for Talos v1.14.6**: kernel ID `22defed9`, pkgs `v1.14.0-59-ge6ad19d`
+(kernel 6.18.63). Each image is under `ghcr.io/achillea-anderson/rpi_cm-radxa_taco/`.
+
+| Image | Digest |
+|---|---|
+| `kernel:v1.14.0-59-ge6ad19d-k22defed9` | `sha256:4ea22f0a9513cbdb5afeee7dda0dcc117cac0c373833d5174369ae75b09f3fc6` |
+| `installer-base:v1.14.6-k22defed9` | `sha256:5db17743ec0a73b8e4f7a20d221ede401810d9f4990a73da817f60f759e29b94` |
+| `imager:v1.14.6-k22defed9` | `sha256:35eec90e1dfbea59ad93c157e1c76fd84245b64691a80438d93a9da792709449` |
+| `installer-cm4-taco13:v1.14.6-b1` | `sha256:606be5a44b58a6a4b858411098bc6cc2188e01c085dfac67159f268b6b58a618` |
+| `installer-cm5-taco13:v1.14.6-b1` | `sha256:2555c132a179514fd5f5c808b1081c6a6caf3db918994e3017d1fb1414ee0b7f` |
+
+To use our build pinned rather than by tag, write `<image>@<digest>`:
+`ghcr.io/achillea-anderson/rpi_cm-radxa_taco/installer-cm4-taco13:v1.14.6-b1@sha256:606be5a4…`
+in full.
+
 ## A new Talos release
 
 1. In `versions.env`: `TALOS_VERSION` to the new release, `PKGS_VERSION` to the
